@@ -1,42 +1,80 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
+/* App.css */
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Poppins', sans-serif;
+  background: linear-gradient(135deg, #1f1c2c, #928dab);
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-container {
   text-align: center;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2rem;
+  border-radius: 20px;
+  backdrop-filter: blur(15px);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+  color: white;
+  width: 90%;
+  max-width: 700px;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+h1 {
+  font-size: 2.5rem;
+  margin-bottom: 1.5rem;
+  background: linear-gradient(90deg, #ff8a00, #e52e71);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: glow 1.5s infinite alternate;
 }
 
-@keyframes logo-spin {
+@keyframes glow {
   from {
-    transform: rotate(0deg);
+    text-shadow: 0 0 5px #ff8a00, 0 0 10px #e52e71;
   }
   to {
-    transform: rotate(360deg);
+    text-shadow: 0 0 20px #ff8a00, 0 0 30px #e52e71;
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
+button {
+  background: linear-gradient(135deg, #ff8a00, #e52e71);
+  border: none;
+  padding: 0.8rem 2rem;
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: white;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  margin-bottom: 1rem;
 }
 
-.card {
-  padding: 2em;
+button:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 15px #e52e71;
 }
 
-.read-the-docs {
-  color: #888;
+.video-container {
+  position: relative;
+  margin-top: 2rem;
+}
+
+video, canvas {
+  border-radius: 20px;
+  box-shadow: 0px 0px 20px rgba(255, 138, 0, 0.6),
+              0px 0px 40px rgba(229, 46, 113, 0.6);
+  width: 100%;
+  max-width: 600px;
+  height: auto;
+  object-fit: cover;
+}
+
+p {
+  font-size: 1.2rem;
+  margin-top: 1rem;
 }
