@@ -12,6 +12,17 @@ function App() {
 	const [recordedChunks, setRecordedChunks] = useState([]);
 	const [downloadLink, setDownloadLink] = useState("");
 	const [showAvatar, setShowAvatar] = useState(false);
+	const [accessibilityMode, setAccessibilityMode] = useState(false);
+	const [speakingFeedback, setSpeakingFeedback] = useState(false);
+	const speechSynthesisRef = useRef(null);
+	const [emotionEffects, setEmotionEffects] = useState(true);
+	const [currentEffect, setCurrentEffect] = useState(null);
+	const [comparisonMode, setComparisonMode] = useState(false);
+	const [referenceFace, setReferenceFace] = useState(null);
+	const [faceMatchResults, setFaceMatchResults] = useState(null);
+	const effectTimeoutRef = useRef(null);
+
+
 	const [avatarColors, setAvatarColors] = useState({
 		skin: "#f5d0a9",
 		hair: "#6b3e26",
@@ -33,7 +44,129 @@ function App() {
 		{ id: "mustache", name: "Mustache" },
 		{ id: "cat", name: "Cat Ears" },
 	];
+	console.log("Applying filter:", selectedFilter);
 
+	const toggleComparisonMode = () => {
+		if (!comparisonMode) {
+			// Entering comparison mode - reset data
+			setReferenceFace(null);
+			setFaceMatchResults(null);
+		}
+		setComparisonMode(!comparisonMode);
+	};
+
+	const captureReferenceFace = async () => {
+		if (!videoRef.current || !modelsLoaded) return;
+
+		try {
+			const detections = await faceapi
+				.detectAllFaces(
+					videoRef.current,
+					new faceapi.TinyFaceDetectorOptions({
+						inputSize: 512,
+						scoreThreshold: 0.4,
+					})
+				)
+				.withFaceLandmarks()
+				.withFaceDescriptors();
+
+			if (detections.length > 0) {
+				// Save first face descriptor as reference
+				setReferenceFace({
+					descriptor: detections[0].descriptor,
+					timestamp: new Date().toLocaleTimeString(),
+				});
+
+				// Snapshot of video frame to canvas for visual reference
+				const canvas = document.createElement("canvas");
+				canvas.width = videoRef.current.videoWidth;
+				canvas.height = videoRef.current.videoHeight;
+				const ctx = canvas.getContext("2d");
+				ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+
+				// Save image data URL to reference object
+				setReferenceFace((prev) => ({
+					...prev,
+					imageUrl: canvas.toDataURL("image/jpeg"),
+				}));
+			}
+		} catch (error) {
+			console.error("Error capturing reference face:", error);
+		}
+	};
+
+	const compareFaceToReference = (faceDescriptor) => {
+		if (!referenceFace || !referenceFace.descriptor) return null;
+
+		// Calculate Euclidean distance between face descriptors
+		// Lower distance = more similar (0 = identical, >0.6 = different person typically)
+		const distance = faceapi.euclideanDistance(
+			faceDescriptor,
+			referenceFace.descriptor
+		);
+
+		// Calculate similarity score (0-100%)
+		const similarity = Math.max(0, Math.min(100, (1 - distance) * 100));
+
+		return {
+			distance,
+			similarity: similarity.toFixed(1),
+			isMatch: distance < 0.6,
+		};
+	};
+
+
+	const toggleAccessibilityMode = () => {
+		setAccessibilityMode(!accessibilityMode);
+
+		// Stop any ongoing speech when toggling
+		if (speechSynthesisRef.current) {
+			window.speechSynthesis.cancel();
+		}
+	};
+	const triggerEmotionEffect = (emotion, intensity) => {
+		if (!emotionEffects || intensity < 0.7) return; // Only trigger for strong emotions
+
+		// Clear any existing effect timeout
+		if (effectTimeoutRef.current) {
+			clearTimeout(effectTimeoutRef.current);
+		}
+
+		// Set the effect based on emotion
+		setCurrentEffect(emotion);
+
+		// Clear effect after 3 seconds
+		effectTimeoutRef.current = setTimeout(() => {
+			setCurrentEffect(null);
+		}, 3000);
+	};
+	const speakDetectionResults = (detections) => {
+		if (!accessibilityMode || speakingFeedback || !detections.length) return;
+
+		const detection = detections[0]; // Use first face detected
+		const { age, gender, expressions } = detection;
+
+		// Get dominant emotion
+		const emotions = Object.entries(expressions);
+		emotions.sort((a, b) => b[1] - a[1]);
+		const dominantEmotion = emotions[0][0];
+
+		// Create message
+		const message = `Detected ${detections.length} ${
+			detections.length === 1 ? "person" : "people"
+		}. 
+            ${detections.length === 1? `You appear to be around ${Math.round(age)} years old and your dominant emotion is ${dominantEmotion}.`: ""}`;
+
+		// Use speech synthesis to speak the message
+		setSpeakingFeedback(true);
+		const utterance = new SpeechSynthesisUtterance(message);
+		utterance.onend = () => {
+			setSpeakingFeedback(false);
+		};
+
+		speechSynthesisRef.current = utterance;
+		window.speechSynthesis.speak(utterance);
+	};
 	// Load models on mount
 	useEffect(() => {
 		const loadModels = async () => {
@@ -617,6 +750,123 @@ function App() {
 		}
 	};
 
+	const renderEmotionEffect = () => {
+		if (!currentEffect) return null;
+
+		const effectStyles = {
+			position: "fixed",
+			top: 0,
+			left: 0,
+			right: 0,
+			bottom: 0,
+			pointerEvents: "none",
+			zIndex: 100,
+		};
+
+		switch (currentEffect) {
+			case "happy":
+				return (
+					<div
+						style={{
+							...effectStyles,
+							background:
+								"radial-gradient(circle, rgba(255,215,0,0.2) 0%, rgba(255,255,255,0) 70%)",
+							animation: "pulse 1.5s infinite",
+						}}
+					>
+						<style>{`
+            @keyframes pulse {
+              0% { opacity: 0.3; }
+              50% { opacity: 0.7; }
+              100% { opacity: 0.3; }
+            }
+            @keyframes float {
+              0% { transform: translateY(0px); }
+              50% { transform: translateY(-20px); }
+              100% { transform: translateY(0px); }
+            }
+          `}</style>
+						{[...Array(15)].map((_, i) => (
+							<div
+								key={i}
+								style={{
+									position: "absolute",
+									fontSize: `${Math.random() * 30 + 20}px`,
+									left: `${Math.random() * 100}%`,
+									top: `${Math.random() * 100}%`,
+									animation: `float ${
+										Math.random() * 3 + 2
+									}s infinite ease-in-out`,
+								}}
+							>
+								😊
+							</div>
+						))}
+					</div>
+				);
+			case "surprised":
+				return (
+					<div
+						style={{
+							...effectStyles,
+							animation: "shake 0.5s",
+						}}
+					>
+						<style>{`
+            @keyframes shake {
+              0% { transform: translate(0, 0) rotate(0deg); }
+              25% { transform: translate(10px, 10px) rotate(5deg); }
+              50% { transform: translate(0, 0) rotate(0eg); }
+              75% { transform: translate(-10px, 10px) rotate(-5deg); }
+              100% { transform: translate(0, 0) rotate(0deg); }
+            }
+          `}</style>
+						{[...Array(20)].map((_, i) => (
+							<div
+								key={i}
+								style={{
+									position: "absolute",
+									fontSize: `${Math.random() * 40 + 20}px`,
+									left: `${Math.random() * 100}%`,
+									top: `${Math.random() * 100}%`,
+									opacity: 0.7,
+								}}
+							>
+								⭐
+							</div>
+						))}
+					</div>
+				);
+			case "angry":
+				return (
+					<div
+						style={{
+							...effectStyles,
+							backdropFilter: "sepia(0.5)",
+							background:
+								"radial-gradient(circle, rgba(255,0,0,0.15) 0%, rgba(255,0,0,0) 70%)",
+						}}
+					>
+						{[...Array(10)].map((_, i) => (
+							<div
+								key={i}
+								style={{
+									position: "absolute",
+									fontSize: `${Math.random() * 30 + 20}px`,
+									left: `${Math.random() * 100}%`,
+									top: `${Math.random() * 100}%`,
+									animation: "float 3s infinite",
+								}}
+							>
+								💢
+							</div>
+						))}
+					</div>
+				);
+			default:
+				return null;
+		}
+	};
 	// Function to track and update emotion history
 	const updateEmotionHistory = (expressions) => {
 		// Find the dominant emotion
@@ -746,7 +996,6 @@ function App() {
 				const ctx = canvasRef.current.getContext("2d");
 				ctx.clearRect(0, 0, videoWidth, videoHeight);
 
-				// First draw the video frame onto the canvas
 				ctx.drawImage(videoRef.current, 0, 0, videoWidth, videoHeight);
 
 				// Draw detections
@@ -757,8 +1006,8 @@ function App() {
 					const { age, gender, genderProbability, expressions } = detection;
 					const { x, y, width } = detection.detection.box;
 
-					// Apply the selected filter
-					if (selectedFilter !== "none") {
+					// Apply selected filter
+					if (selectedFilter !== "none" && detection.landmarks) {
 						applyFilter(ctx, detection, selectedFilter);
 					}
 
@@ -780,17 +1029,68 @@ function App() {
 					const topEmotion = emotions[0];
 					ctx.fillText(`Emotion: ${topEmotion[0]}`, x, y + width + 20);
 
-					// Update emotion history
 					updateEmotionHistory(expressions);
 
-					// Display emotion-based message
+					// Emotion message
 					if (topEmotion[1] > 0.5) {
 						const message = getEmotionMessage(expressions);
 						ctx.fillStyle = "lime";
 						ctx.font = "bold 18px Arial";
 						ctx.fillText(message, x, y + width + 50);
 					}
+
+					// Trigger visual emotion effect
+					Object.entries(expressions).forEach(([emotion, value]) => {
+						if (value > 0.7) {
+							triggerEmotionEffect(emotion, value);
+						}
+					});
 				});
+
+				// ✅ INSERTED FACE COMPARISON CODE HERE
+				if (comparisonMode && referenceFace) {
+					try {
+						const fullDetections = await faceapi
+							.detectAllFaces(
+								videoRef.current,
+								new faceapi.TinyFaceDetectorOptions()
+							)
+							.withFaceLandmarks()
+							.withFaceDescriptors();
+
+						if (fullDetections.length > 0) {
+							const matchResults = compareFaceToReference(
+								fullDetections[0].descriptor
+							);
+							setFaceMatchResults(matchResults);
+
+							if (matchResults) {
+								const { x, y, width } = fullDetections[0].detection.box;
+								ctx.fillStyle = matchResults.isMatch
+									? "rgba(0, 255, 0, 0.5)"
+									: "rgba(255, 0, 0, 0.5)";
+								ctx.fillRect(x, y - 30, width, 30);
+								ctx.fillStyle = "white";
+								ctx.font = "16px Arial";
+								ctx.fillText(
+									`Match: ${matchResults.similarity}%`,
+									x + 5,
+									y - 10
+								);
+							}
+						}
+					} catch (error) {
+						console.error("Error comparing faces:", error);
+					}
+				}
+				// ✅ END OF INSERT
+
+				// Accessibility speaking feedback
+				if (accessibilityMode) {
+					if (Math.floor(Date.now() / 5000) % 2 === 0) {
+						speakDetectionResults(detections);
+					}
+				}
 
 				console.log("Faces detected:", detections.length);
 			}
@@ -1017,6 +1317,47 @@ function App() {
 									)}
 								</div>
 							</div>
+							<div style={{ margin: "20px 0" }}>
+								<div style={{ marginBottom: "10px" }}>Capture Options:</div>
+								<div
+									style={{
+										display: "flex",
+										justifyContent: "center",
+										gap: "10px",
+									}}
+								>
+									{/* Screenshot and Recording buttons */}
+									<button>📸 Take Screenshot</button>
+									<button>🎥 Start/Stop Recording</button>
+								</div>
+							</div>
+
+							{/* ✅ ADD YOUR NEW TOGGLE BUTTONS HERE */}
+							<div style={{ margin: "20px 0" }}>
+								<button
+									onClick={toggleAccessibilityMode}
+									style={{
+										...buttonStyle,
+										backgroundColor: accessibilityMode ? "#22c55e" : "#64748b",
+									}}
+								>
+									{accessibilityMode
+										? "🔊 Disable Voice Feedback"
+										: "🔇 Enable Voice Feedback"}
+								</button>
+
+								<button
+									onClick={() => setEmotionEffects(!emotionEffects)}
+									style={{
+										...buttonStyle,
+										backgroundColor: emotionEffects ? "#8b5cf6" : "#64748b",
+									}}
+								>
+									{emotionEffects
+										? "✨ Disable Emotion Effects"
+										: "🔍 Enable Emotion Effects"}
+								</button>
+							</div>
 
 							{downloadLink && (
 								<div style={{ margin: "10px 0" }}>
@@ -1045,6 +1386,106 @@ function App() {
 										: "Show Emotion Analytics"}
 								</button>
 							</div>
+							{captureVideo && (
+								<div style={{ margin: "20px 0" }}>
+									<button
+										onClick={toggleComparisonMode}
+										style={{
+											...buttonStyle,
+											backgroundColor: comparisonMode ? "#f97316" : "#64748b",
+										}}
+									>
+										{comparisonMode
+											? "❌ Exit Face Comparison"
+											: "👥 Face Comparison Mode"}
+									</button>
+
+									{comparisonMode && (
+										<div style={{ marginTop: "10px" }}>
+											{!referenceFace ? (
+												<button
+													onClick={captureReferenceFace}
+													style={{ ...buttonStyle, backgroundColor: "#0ea5e9" }}
+												>
+													📸 Capture Reference Face
+												</button>
+											) : (
+												<div>
+													<div
+														style={{
+															display: "flex",
+															alignItems: "center",
+															justifyContent: "center",
+															gap: "20px",
+															marginTop: "10px",
+															background: "#1e293b",
+															padding: "15px",
+															borderRadius: "10px",
+														}}
+													>
+														<div>
+															<h4>Reference Face</h4>
+															<p>Captured at: {referenceFace.timestamp}</p>
+															{referenceFace.imageUrl && (
+																<img
+																	src={referenceFace.imageUrl}
+																	alt="Reference face"
+																	style={{
+																		width: "150px",
+																		height: "auto",
+																		borderRadius: "10px",
+																		border: "2px solid #3b82f6",
+																	}}
+																/>
+															)}
+														</div>
+
+														{faceMatchResults && (
+															<div
+																style={{
+																	padding: "15px",
+																	background: faceMatchResults.isMatch
+																		? "rgba(34, 197, 94, 0.2)"
+																		: "rgba(239, 68, 68, 0.2)",
+																	borderRadius: "10px",
+																	textAlign: "center",
+																}}
+															>
+																<h4>Match Results</h4>
+																<div
+																	style={{
+																		fontSize: "24px",
+																		fontWeight: "bold",
+																	}}
+																>
+																	{faceMatchResults.similarity}%
+																</div>
+																<div>
+																	{faceMatchResults.isMatch
+																		? "✅ MATCH"
+																		: "❌ NO MATCH"}
+																</div>
+															</div>
+														)}
+													</div>
+
+													<button
+														onClick={() => setReferenceFace(null)}
+														style={{
+															...buttonStyle,
+															backgroundColor: "#6b7280",
+															marginTop: "10px",
+														}}
+													>
+														🔄 Reset Reference Face
+													</button>
+												</div>
+											)}
+										</div>
+									)}
+								</div>
+							)}
+							{currentEffect && renderEmotionEffect()}          
 						</div>
 					)}
 				</div>
